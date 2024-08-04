@@ -21,6 +21,11 @@ CROSS="${RED}✘${RESET}"
 key_types=("rsa4096: RSA key with 4096 bits" "ed25519: Ed25519 key")
 expire="1y"
 
+INSTRUCTIONS="
+
+
+"
+
 logo() {
     echo "
     ${RAND_COLOR}███████${RESET}╗${RAND_COLOR}███████${RESET}╗ ${RAND_COLOR}██████${RESET}╗ ${RAND_COLOR}██████${RESET}╗  ${RAND_COLOR}██████${RESET}╗
@@ -127,7 +132,7 @@ check_programs() {
     local unavailable_programs=()
     local os_type=$(detect_os)
 
-    echo "Requirements check:"
+    echo "Requirements:"
     for program_package in "${programs[@]}"; do
         IFS=',' read -r program package <<< "$program_package"
         if ! is_program_available $program; then
@@ -188,11 +193,7 @@ check_programs() {
             echo "Some programs are still not available. Please install the necessary programs."
             echo -e "$final_results"
             exit 1
-        else
-            echo "All required programs are available."
         fi
-    else
-        echo "All required programs are available. No installation needed."
     fi
 
 }
@@ -228,27 +229,26 @@ check_git_config() {
 
     git_email=$(get_git_email)
     git_name=$(get_git_name)
-    echo "Checking git configuration"
-    echo "👤 Name: $git_name"
-    echo "✉️ Email: $git_email"
+    echo "\nUser configuration:"
+    echo "${YELLOW}→${RESET} Name:  $git_name"
+    echo "${YELLOW}→${RESET} Email: $git_email"
 
     user_input=$(prompt_user "Are these values correct? (y/N): ")
 
     if [[ "$user_input" =~ ^[Yy]$ ]]; then
         [ "$verbose" = true ] && echo "No changes made."
     else
-        git_name=$(prompt_user "👤 New name: ")
-        git_email=$(prompt_user "✉️ New email: ")
+         git_name=$(prompt_user "New name:  ")
+        git_email=$(prompt_user "New email: ")
 
-        echo "👤 Updated name: $git_name"
-        echo "✉️ Updated email: $git_email"
+        echo "${YELLOW}→${RESET} Updated name:  $git_name"
+        echo "${YELLOW}→${RESET} Updated email: $git_email"
 
+        echo "GPG keys and git commits need to match exactly for the email and name to be valid."
         user_input=$(prompt_user "Do you want to configure git with these values? (y/N): ")
 
         if [[ "$user_input" =~ ^[Yy]$ ]]; then
-            echo "% git config --global user.email \"$git_email\""
             git config --global user.email "$git_email"
-            echo "% git config --glboal user.name \"$git_name\""
             git config --global user.name "$git_name"
             echo "$CHECK Git configuration updated."
         else
@@ -327,7 +327,7 @@ prompt_key_choice() {
     local choice
     set +H  # Disable history expansion
     while true; do
-        echo "Please choose a key type:"
+        echo "\nPlease choose a key type:"
         for ((i = 1; i <= ${#key_types[@]}; i++)); do
             key="${key_types[$i]%%:*}"
             comment="${key_types[$i]#*: }"
@@ -373,6 +373,54 @@ print_section_title() {
     echo "$underline"
 }
 
+select_external_drive() {
+    local selected_mount_point_var=$1
+    mounted_filesystems=$(mount)
+
+    # Get a list of all external drives using diskutil
+    external_drives=$(diskutil list external | awk '/^\/dev/ {print $1}')
+    external_drives=("${(@f)external_drives}")
+
+    # Loop through each external drive and find its mount points
+    available_mount_points=()
+    for drive in $external_drives; do
+        # Get the mount point(s) of the drive
+        mount_points=$(echo "$mounted_filesystems" | grep "$drive" | awk '{print $3}')
+        read_only=$(echo "$mounted_filesystems" | grep "$drive" | grep -q 'read-only' && echo true || echo false)
+        # If there are mount points, store them
+        if [[ "$read_only" == false && -n "$mount_points" ]]; then
+            mount_points=("${(@f)mount_points}")
+            for mount_point in $mount_points; do
+                available_mount_points+=("$mount_point")
+            done
+        fi
+    done
+
+    # Prompt the user to select a mount point
+    if [ ${#available_mount_points[@]} -eq 0 ]; then
+        echo "No writable external drives found."
+        return 1
+    fi
+
+    echo "\nPlease select an external drive for key backup:"
+    for i in {1..${#available_mount_points[@]}}; do
+        echo "$i) ${available_mount_points[$((i))]}"
+    done
+
+    local valid_choice=0
+    while [[ $valid_choice -eq 0 ]]; do
+        read "user_choice?> "
+        if [[ "$user_choice" =~ ^[0-9]+$ ]] && [ "$user_choice" -ge 1 ] && [ "$user_choice" -le ${#available_mount_points[@]} ]; then
+            valid_choice=1
+        else
+            echo "Invalid selection. Please try again."
+        fi
+    done
+
+    selected_mount_point="${available_mount_points[$((user_choice))]}"
+    eval "$selected_mount_point_var='$selected_mount_point'"
+}
+
 ####################
 ### SCRIPT START ###
 ####################
@@ -406,6 +454,10 @@ check_programs "${programs_to_check[@]}"
 check_git_config
 user_name=$(get_git_name)
 user_email=$(get_git_email)
+
+# Pick an external drive to use for key backup
+selected_drive=""
+select_external_drive selected_drive
 
 # GPG key inputs
 # GPG identity
