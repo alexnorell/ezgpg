@@ -22,8 +22,18 @@ key_types=("rsa4096: RSA key with 4096 bits" "ed25519: Ed25519 key")
 expire="1y"
 
 INSTRUCTIONS="
+You'll need to have the following prepared before running this script to
+completion:
+1. Pen and paper to write down passphrases and pins
+2. External disk plugged in and mounted
+3. A single Yubikey plugged in
 
+EZGPG will check for the presence of the necessary packages, and prompt to
+install them if missing. You will only need an internet connection if the
+packages are missing.
 
+The PGP application on your Yubikey will be reset, wiping the keys stored
+there.
 "
 
 logo() {
@@ -37,6 +47,10 @@ logo() {
            Quick and Easy GPG Set Up
                ${CYAN}https://ezgpg.com${RESET}
 "
+}
+
+new_line() {
+    echo ""
 }
 
 detect_os() {
@@ -132,7 +146,7 @@ check_programs() {
     local unavailable_programs=()
     local os_type=$(detect_os)
 
-    echo "Requirements:"
+    echo "Applications:"
     for program_package in "${programs[@]}"; do
         IFS=',' read -r program package <<< "$program_package"
         if ! is_program_available $program; then
@@ -155,7 +169,7 @@ check_programs() {
     fi
 
     if [[ ${#unavailable_programs[@]} -gt 0 ]]; then
-        echo "Some programs are not available. Prompting for installation..."
+        echo "Some applications are not available. Prompting for installation..."
         for program_package in "${unavailable_programs[@]}"; do
             IFS=',' read -r program package <<< "$program_package"
             prompt_installation $os_type $program $package
@@ -190,7 +204,7 @@ check_programs() {
         fi
 
         if ! $all_available; then
-            echo "Some programs are still not available. Please install the necessary programs."
+            echo "Some applications are still not available. Please install the necessary applications."
             echo -e "$final_results"
             exit 1
         fi
@@ -229,7 +243,7 @@ check_git_config() {
 
     git_email=$(get_git_email)
     git_name=$(get_git_name)
-    echo "\nUser configuration:"
+    echo "User configuration:"
     echo "${YELLOW}→${RESET} Name:  $git_name"
     echo "${YELLOW}→${RESET} Email: $git_email"
 
@@ -327,7 +341,7 @@ prompt_key_choice() {
     local choice
     set +H  # Disable history expansion
     while true; do
-        echo "\nPlease choose a key type:"
+        echo "Please choose a key type:"
         for ((i = 1; i <= ${#key_types[@]}; i++)); do
             key="${key_types[$i]%%:*}"
             comment="${key_types[$i]#*: }"
@@ -376,7 +390,6 @@ print_section_title() {
 select_external_drive() {
     local selected_mount_point_var=$1
     mounted_filesystems=$(mount)
-
     # Get a list of all external drives using diskutil
     external_drives=$(diskutil list external | awk '/^\/dev/ {print $1}')
     external_drives=("${(@f)external_drives}")
@@ -398,11 +411,11 @@ select_external_drive() {
 
     # Prompt the user to select a mount point
     if [ ${#available_mount_points[@]} -eq 0 ]; then
-        echo "No writable external drives found."
-        return 1
+        echo "External Drive:\n${CROSS} No writable external drives found."
+        exit 1
     fi
 
-    echo "\nPlease select an external drive for key backup:"
+    echo "Please select an external drive for key backup:"
     for i in {1..${#available_mount_points[@]}}; do
         echo "$i) ${available_mount_points[$((i))]}"
     done
@@ -421,6 +434,32 @@ select_external_drive() {
     eval "$selected_mount_point_var='$selected_mount_point'"
 }
 
+ensure_yubikey() {
+    local count
+    count=$(ykman list | wc -l)
+    echo "Yubikey:"
+    if [ "$count" -eq 0 ]; then
+        echo "${CROSS} No yubikey found"
+        exit 1
+    elif [ "$count" -eq 1 ]; then
+        ykman list
+    else
+        echo "${CROSS} More than one yubikey found. Only one can be plugged in"
+        exit 1
+    fi
+}
+
+ensure_gpg_key() {
+    local identity="$1"
+    local output
+    output=$(gpg --list-keys "$identity" 2>&1)
+
+    if [[ ! "$output" == *"gpg: error reading key: No public key"* ]]; then
+        echo "\n${CROSS} GPG key for identity '$identity' already exists."
+        exit 1
+    fi
+}
+
 ####################
 ### SCRIPT START ###
 ####################
@@ -434,13 +473,11 @@ while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
 esac; shift; done
 if [[ "$1" == '--' ]]; then shift; fi
 
-# Print logo
+# Print header
 logo
+echo $INSTRUCTIONS
 
-#########################
-# Initial Configuration #
-#########################
-print_section_title "Initial Configuration"
+print_section_title "Requirements"
 
 # Check programs
 programs_to_check=(
@@ -450,25 +487,49 @@ programs_to_check=(
 )
 check_programs "${programs_to_check[@]}"
 
+# Check drive
+# Pick an external drive to use for key backup
+new_line
+selected_drive=""
+select_external_drive selected_drive
+
+# Check yubikey
+new_line
+ensure_yubikey
+
+# Internet check
+new_line
+echo "Best practice suggests that you disconnect from the internet. Check connection?"
+internet_off_continue=$(prompt_user "Continue? (y/skip): ")
+if [[ "$internet_off_continue" =~ ^[Ss][Kk][Ii][Pp]$ ]]; then
+    echo "${YELLOW}!${RESET} Bypassing internet check"
+elif [[ "$internet_off_continue" =~ ^[Yy]$ ]]; then
+    loop_until_disconnected
+fi
+new_line
+
+#########################
+# Initial Configuration #
+#########################
+print_section_title "Initial Configuration"
+
 # Check git config and set up if needed
 check_git_config
 user_name=$(get_git_name)
 user_email=$(get_git_email)
 
-# Pick an external drive to use for key backup
-selected_drive=""
-select_external_drive selected_drive
-
-# GPG key inputs
 # GPG identity
 identity="$user_name <$user_email>"
 [ "$verbose" = true ] && echo "GPG Identity: $identity"
+ensure_gpg_key $identity
 
 # Key types/algorithms
+new_line
 prompt_key_choice
 key_type="${key_types[$?]%%:*}"  # Extract the key without the comment
 
 # Put in best practices for GPG
+new_line
 harden_gpg_conf
 
 # Set up temp-dir
@@ -481,14 +542,6 @@ cd $gpg_temp
 ##################
 print_section_title "Key generation"
 
-echo "Best practice suggests that you disconnect from the internet. Check connection?"
-internet_off_continue=$(prompt_user "Continue? (y/skip): ")
-if [[ "$internet_off_continue" =~ ^[Ss][Kk][Ii][Pp]$ ]]; then
-    echo "${YELLOW}!${RESET} Bypassing internet check"
-elif [[ "$internet_off_continue" =~ ^[Yy]$ ]]; then
-    loop_until_disconnected
-fi
-
 echo "Generating passphrase...\nWrite this down somewhere secure:"
 
 # Create Primary (Certify) key passphrase
@@ -498,7 +551,12 @@ print_in_box $passphrase
 
 echo "Generating primary certify key..."
 [ "$verbose" = true ] && echo "% gpg --batch --passphrase "$passphrase" --quick-generate-key "$identity" "$key_type" cert never"
-gpg --batch --passphrase "$passphrase" --quick-generate-key "$identity" "$key_type" cert never
+gpg --batch --yes --passphrase "$passphrase" --quick-generate-key --no-tty "$identity" "$key_type" cert never
+
+if [ ! $? -eq 0 ]; then
+    echo "${CROSS} Failed to generate gpg key"
+    exit 1
+fi
 
 primary_key_id=$(gpg -k --with-colons "$identity" | awk -F: '/^pub:/ { print $5; exit }')
 
@@ -513,9 +571,182 @@ for subkey in sign encrypt auth; do
         adjusted_key_type="$key_type"
     fi
     [ "$verbose" = true ] && echo "% gpg --batch --pinentry-mode=loopback --passphrase "$passphrase" --quick-add-key "$primary_key_fingerprint" "$adjusted_key_type" "$subkey" $expire"
-    gpg --batch --pinentry-mode=loopback --passphrase "$passphrase" --quick-add-key "$primary_key_fingerprint" "$adjusted_key_type" "$subkey" $expire
+    gpg --batch --yes --no-tty --pinentry-mode=loopback --passphrase "$passphrase" --quick-add-key "$primary_key_fingerprint" "$adjusted_key_type" "$subkey" $expire
+    if [ ! $? -eq 0 ]; then
+        echo "${CROSS} Failed to generate $subkey subkey"
+        exit 1
+    fi
 done
 
 echo "${CHECK} Subkeys generated"
 
-cd $HOME
+# Export private keys
+
+gpg --output $gpg_temp/$primary_key_id-primary.gpg --batch --pinentry-mode=loopback --passphrase "$passphrase" --armor --export-secret-keys $primary_key_id
+if [ ! $? -eq 0 ]; then
+    echo "${CROSS} Failed to export primary private key"
+    exit 1
+fi
+
+gpg --output $gpg_temp/$primary_key_id-subkeys.gpg --batch --pinentry-mode=loopback --passphrase "$passphrase" --armor --export-secret-subkeys $primary_key_id
+if [ ! $? -eq 0 ]; then
+    echo "${CROSS} Failed to export subkeys"
+    exit 1
+fi
+
+gpg --output $gpg_temp/$primary_key_id-$(date +%F).asc --armor --export $primary_key_id
+if [ ! $? -eq 0 ]; then
+    echo "${CROSS} Failed to export public key"
+    exit 1
+fi
+
+mv $gpg_temp/$primary_key_id-primary.gpg $gpg_temp/$primary_key_id-subkeys.gpg $gpg_temp/$primary_key_id-$(date +%F).asc $selected_drive
+
+if [ $? -eq 0 ]; then
+    echo "${CHECK} Exported private keys and backed them up to $selected_drive"
+else
+    echo "${CROSS} Failed to exported private keys to $selected_drive"
+    exit 1
+fi
+
+# Remove primary key
+gpg --batch --yes --no-tty --pinentry-mode=loopback --passphrase "$passphrase" --delete-secret-keys $primary_key_fingerprint\!
+
+if [ $? -eq 0 ]; then
+    echo "${CHECK} Primary key removed"
+else
+    echo "${CROSS} Failed to remove primary key"
+    exit 1
+fi
+
+###########
+# Yubikey #
+###########
+
+print_section_title "Yubikey"
+
+ykman config usb --disable otp --force > /dev/null
+if [ $? -eq 0 ]; then
+    echo "${CHECK} Disabled touch OTP"
+    sleep 2
+else
+    echo "${CROSS} Disable touch OTP failed"
+    exit 1
+fi
+
+
+# Reset PGP application to defaults
+ykman openpgp reset --force > /dev/null
+if [ $? -eq 0 ]; then
+    echo "${CHECK} Reset PGP Application to defaults"
+    sleep 2
+else
+    echo "${CROSS} Reset PGP Application to defaults failed"
+    exit 1
+fi
+
+echo "Generating admin pin for yubikey...\nWrite this down somewhere"
+
+admin_pin=$(LC_ALL=C tr -dc '0-9' < /dev/urandom | fold -w8 | head -1)
+
+print_in_box $admin_pin
+
+gpg --command-fd=0 --pinentry-mode=loopback --change-pin > /dev/null <<EOF
+3
+12345678
+$admin_pin
+$admin_pin
+q
+EOF
+
+if [ $? -eq 0 ]; then
+    echo "${CHECK} Admin pin set to $admin_pin"
+else
+    echo "${CROSS} Failed to set admin pin"
+    exit 1
+fi
+echo "Generating user pin for yubikey...\nWrite this down somewhere"
+
+user_pin=$(LC_ALL=C tr -dc '0-9' < /dev/urandom | fold -w6 | head -1)
+
+print_in_box $user_pin
+
+gpg --command-fd=0 --pinentry-mode=loopback --change-pin > /dev/null <<EOF
+1
+123456
+$user_pin
+$user_pin
+q
+EOF
+
+if [ $? -eq 0 ]; then
+    echo "${CHECK} User pin set to $user_pin"
+else
+    echo "${CROSS} Failed to set user pin"
+    exit 1
+fi
+
+# Set Identity
+gpg --command-fd=0 --pinentry-mode=loopback --edit-card <<EOF
+admin
+login
+$identity
+$admin_pin
+quit
+EOF
+if [ $? -eq 0 ]; then
+    echo "${CHECK} Configured Identity"
+else
+    echo "${CROSS} Failed to configure identity"
+    exit 1
+fi
+
+# Transfer keys
+
+gpg --command-fd=0 --pinentry-mode=loopback --edit-key $primary_key_id <<EOF
+key 1
+keytocard
+1
+$passphrase
+$admin_pin
+save
+EOF
+
+if [ $? -eq 0 ]; then
+    echo "${CHECK} Moved signature subkey to yubikey"
+else
+    echo "${CROSS} Failed to move signature subkey"
+    exit 1
+fi
+
+gpg --command-fd=0 --pinentry-mode=loopback --edit-key $primary_key_id <<EOF
+key 2
+keytocard
+2
+$passphrase
+$admin_pin
+save
+EOF
+
+if [ $? -eq 0 ]; then
+    echo "${CHECK} Moved encryption subkey to yubikey"
+else
+    echo "${CROSS} Failed to move encryption subkey"
+    exit 1
+fi
+
+gpg --command-fd=0 --pinentry-mode=loopback --edit-key $primary_key_id <<EOF
+key 3
+keytocard
+3
+$passphrase
+$admin_pin
+save
+EOF
+
+if [ $? -eq 0 ]; then
+    echo "${CHECK} Moved authentication subkey to yubikey"
+else
+    echo "${CROSS} Failed to move authentication subkey"
+    exit 1
+fi
