@@ -310,6 +310,66 @@ EOF
     done <<< "$gpg_conf_content"
 }
 
+enable_pinentry() {
+    local gpg_agent_file="$HOME/.gnupg/gpg-agent.conf"
+
+    # Check if pinentry-program is already set
+    if grep -q "^pinentry-program" "$gpg_agent_file"; then
+        echo "${CHECK} pinentry-program already configured"
+        return
+    fi
+
+    local pinentry_programs=("pinentry-mac" "pinentry-fltk" "pinentry-gnome3" "pinentry-gtk2" "pinentry-qt" "pinentry-tty" "pinentry-x2go" "pinentry-curses")
+    local installed_program=""
+
+    for program in "${pinentry_programs[@]}"; do
+        if command -v $program >/dev/null 2>&1; then
+            installed_program=$program
+            break
+        fi
+    done
+
+    if [[ -n $installed_program ]]; then
+        echo "pinentry-program $(command -v $installed_program)" >> "$gpg_agent_file"
+        echo "${CHECK} Set pinentry-program to $installed_program"
+    fi
+    gpg-connect-agent reloadagent /bye
+}
+
+
+enable_ssh_agent () {
+    local gpg_agent_file="$HOME/.gnupg/gpg-agent.conf"
+    local gpg_agent_content=$(cat <<EOF
+enable-ssh-support
+use-standard-socket
+EOF
+    )
+    touch $gpg_agent_file
+
+    # Append lines only if they aren't already present
+    while IFS= read -r line; do
+        if ! grep -Fxq "$line" "$gpg_agent_file"; then
+            echo "$line" >> "$gpg_agent_file"
+        fi
+    done <<< "$gpg_agent_content"
+
+
+    local zsh_rc_file="$HOME/.zshrc"
+    local zsh_rc_content=$(cat <<EOF
+export GPG_TTY=$(tty)
+export SSH_AUTH_SOCK=$(gpgconf --list-dirs agent-ssh-socket)
+gpgconf --launch gpg-agent
+EOF
+    )
+
+    touch $zsh_rc_file
+    while IFS= read -r line; do
+        if ! grep -Fxq "$line" "$zsh_rc_file"; then
+            echo "$line" >> "$zsh_rc_file"
+        fi
+    done <<< "$zsh_rc_content"
+}
+
 check_internet_connection() {
     local test_domain="ezgpg.com"
     local timeout=1
@@ -542,6 +602,8 @@ cd $gpg_temp
 ##################
 print_section_title "Key generation"
 
+enable_pinentry
+
 echo "Generating passphrase...\nWrite this down somewhere secure:"
 
 # Create Primary (Certify) key passphrase
@@ -618,6 +680,53 @@ else
     echo "${CROSS} Failed to remove primary key"
     exit 1
 fi
+
+###############
+# Git and SSH #
+###############
+
+print_section_title "Git and SSH"
+
+sign_fingerprint=$(gpg --batch --no-tty --list-keys --with-subkey-fingerprints $primary_key_id | sed -n '/\[S\]/,+1p' | sed -n 's/.*Key fingerprint = //p' | tr -d ' ')
+
+git config --global commit.gpgsign true
+if [ ! $? -eq 0 ]; then
+    echo "${CROSS} Failed to enable git signed commits"
+    exit 1
+fi
+git config --global tag.gpgSign true
+if [ ! $? -eq 0 ]; then
+    echo "${CROSS} Failed to enable git signed tags"
+    exit 1
+fi
+git config --global user.signingkey $sign_fingerprint
+if [ ! $? -eq 0 ]; then
+    echo "${CROSS} Failed to set git signing key"
+    exit 1
+fi
+
+echo "${CHECK} Configured git to sign commits and tags"
+
+auth_keygrip=$(gpg --batch --no-tty --list-secret-keys --with-keygrip $primary_key_id | sed -n '/\[A\]/,/Keygrip/p' | awk '/Keygrip/ {print $3}')
+auth_fingerprint=$(gpg --batch --no-tty --list-keys --with-subkey-fingerprints $primary_key_id | sed -n '/\[A\]/,+1p' | sed -n 's/.*Key fingerprint = //p' | tr -d ' ')
+
+echo $auth_keygrip >> ~/.gnupg/sshcontrol
+
+if [ $? -eq 0 ]; then
+    echo "${CHECK} Added Authentication Key to SSH Control"
+    sleep 2
+else
+    echo "${CROSS} Failed to add Authentication key to SSH Control"
+    exit 1
+fi
+
+enable_ssh_agent
+echo "${CHECK} Enable GPG Agent for SSH"
+
+ssh_public_key=$(gpg --batch --no-tty --export-ssh-key $auth_fingerprint)
+
+echo "SSH Public Key:"
+print_in_box $ssh_public_key
 
 ###########
 # Yubikey #
