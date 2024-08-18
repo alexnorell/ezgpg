@@ -1,0 +1,13 @@
+{{ define "main" }}
+<header>
+    <div class="toggle-container">
+        <label class="switch" for="theme-toggle">
+            <input type="checkbox" id="theme-toggle" aria-label="Toggle dark mode">
+            <span class="slider" aria-hidden="true"></span>
+        </label>
+    </div>
+
+    <h1>{{ .Site.Title }}</h1>
+    <h2>{{ .Site.Params.subtitle }}</h2>
+</header>
+{{ partial "terminal.html" .Site.Params.install_sh }} {{ end }}

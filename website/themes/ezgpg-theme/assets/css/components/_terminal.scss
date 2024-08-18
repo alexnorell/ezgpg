@@ -1,0 +1,86 @@
+/* Variables */
+$terminal-bg-color: #2d2d2d;
+$terminal-text-color: #f4f4f4;
+$terminal-header-bg: #1e1e1e;
+$button-bg-color: #444;
+$button-hover-bg-color: #666;
+$button-size: 0.75em; /* Size of the terminal buttons */
+
+/* Terminal Styling */
+.terminal {
+    width: 80%;
+    max-width: 50em; /* equivalent to 800px */
+    margin: 1em auto;
+    border-radius: 0.5em;
+    overflow: hidden;
+    background-color: $terminal-bg-color;
+    color: $terminal-text-color;
+    font-family: "Courier New", Courier, monospace;
+    box-shadow: 0 0 1.25em rgba(0, 0, 0, 0.2);
+    position: relative;
+
+    &-header {
+        background-color: $terminal-header-bg;
+        padding: 0.5em 1em;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+
+        .buttons {
+            display: flex;
+            gap: 0.5em;
+
+            span {
+                display: inline-block;
+                width: $button-size;
+                height: $button-size;
+                border-radius: 50%;
+
+                &.red {
+                    background-color: #ff5f56;
+                }
+
+                &.yellow {
+                    background-color: #ffbd2e;
+                }
+
+                &.green {
+                    background-color: #27c93f;
+                }
+            }
+        }
+    }
+
+    &-body {
+        padding: 1em;
+        padding-right: 4.375em; /* Ensure space for the copy button */
+        overflow-x: auto;
+        white-space: wrap;
+        word-wrap: break-word;
+        position: relative;
+
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 0.625em; /* equivalent to 10px */
+            right: 0.9375em; /* equivalent to 15px */
+            padding: 0.375em 0.5em; /* Reduced padding for a more compact button */
+            background-color: $button-bg-color;
+            color: #fff;
+            border: none;
+            border-radius: 0.3125em; /* equivalent to 5px */
+            cursor: pointer;
+            transition: background-color 0.3s;
+            z-index: 1;
+
+            &:hover {
+                background-color: $button-hover-bg-color;
+            }
+        }
+    }
+}

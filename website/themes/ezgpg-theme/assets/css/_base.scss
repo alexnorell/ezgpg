@@ -1,0 +1,61 @@
+$base-padding: 1em;
+$small-padding: 0.5em;
+$large-padding: 2em;
+$button-padding: 0.375em 0.5em;
+$terminal-bg-color: #2d2d2d;
+$terminal-text-color: #f4f4f4;
+$terminal-header-bg: #1e1e1e;
+$button-bg-color: #444;
+$button-hover-bg-color: #666;
+$box-shadow: 0 0 1.25em rgba(0, 0, 0, 0.2);
+
+/* Basic Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Set base font size to 100% on html */
+html {
+    font-size: 100%;
+}
+
+/* Body styles for light and dark mode */
+body {
+    font-family: Arial, sans-serif;
+
+    &.light-mode {
+        background-color: #f4f4f4;
+        color: #333;
+    }
+
+    &.dark-mode {
+        background-color: #1e1e1e;
+        color: #f4f4f4;
+    }
+}
+
+/* Center content */
+header {
+    text-align: center;
+    padding: $base-padding;
+    margin-top: 5%;
+}
+
+/* Title and subtitle styles using relative font sizes */
+h1 {
+    font-size: 2.5rem; /* 2.5 times the base font size */
+}
+
+h2 {
+    font-size: 1.5rem; /* 1.5 times the base font size */
+    margin-top: 0.625em; /* equivalent to 10px */
+}
+
+/* Toggle switch container */
+.toggle-container {
+    position: absolute;
+    top: 1.25em; /* equivalent to 20px */
+    right: 1.25em; /* equivalent to 20px */
+}

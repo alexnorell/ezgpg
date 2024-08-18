@@ -1,0 +1,17 @@
+baseURL: https://ezgpg.com/
+languageCode: en-us
+title: EZGPG
+theme: ezgpg-theme
+
+params:
+  subtitle: Quick and Easy GPG Set Up
+  install_sh: curl -sSL https://ezgpg.com/ezgpg.sh | zsh
+  source: https://github.com/alexnorell/ezgpg/blob/main/ezgpg.sh
+
+markup:
+  highlight:
+    codeFences: true
+    guessSyntax: true
+    lineNos: true
+    style: "monokai"
+    noClasses: false

@@ -1,0 +1,11 @@
+{{ define "main" }}
+<article class="content">
+    <header>
+        <h1>{{ .Title }}</h1>
+    </header>
+    <section class="code-display">
+        {{ $fileContent := readFile "static/ezgpg.sh" }}
+        <pre><code class="language-bash">{{ $fileContent }}</code></pre>
+    </section>
+</article>
+{{ end }}
