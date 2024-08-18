@@ -356,8 +356,8 @@ EOF
 
     local zsh_rc_file="$HOME/.zshrc"
     local zsh_rc_content=$(cat <<EOF
-export GPG_TTY=$(tty)
-export SSH_AUTH_SOCK=$(gpgconf --list-dirs agent-ssh-socket)
+export GPG_TTY=\$(tty)
+export SSH_AUTH_SOCK=\$(gpgconf --list-dirs agent-ssh-socket)
 gpgconf --launch gpg-agent
 EOF
     )
